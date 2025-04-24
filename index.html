@@ -134,8 +134,19 @@
         }
         #intro p {
             font-size: 24px;
-            margin: 10px 0 0;
+            margin: 10px 0;
             color: #000;
+        }
+        #volume-control {
+            margin-top: 10px;
+        }
+        #volume-control label {
+            font-size: 18px;
+            color: #000;
+        }
+        #volume-control input[type="range"] {
+            width: 100px;
+            margin-top: 5px;
         }
     </style>
 </head>
@@ -144,10 +155,20 @@
         <div id="intro">
             <h1>Flappy CC</h1>
             <p>Press Spacebar or Touch Screen to begin</p>
+            <div id="volume-control">
+                <label for="volume-slider">Volume:</label>
+                <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5">
+            </div>
         </div>
         <div id="head" class="neutral"></div>
         <div id="score">Score: 0</div>
         <div id="game-over">Game Over!</div>
+        <audio id="background-music" loop>
+            <source src="https://github.com/qoewin/testflapgame/blob/2ba79b7e39959cd142c757cae2d021cc65091ed9/best-game-console-301284.mp3?raw=true" type="audio/mpeg">
+        </audio>
+        <audio id="game-over-sound">
+            <source src="https://github.com/qoewin/testflapgame/blob/0943f568194296991dd3acff7cc5efdf89e86fab/Elegant%20Game%20Over.wav?raw=true" type="audio/wav">
+        </audio>
     </div>
 
     <script>
@@ -156,6 +177,9 @@
         const scoreDisplay = document.getElementById('score');
         const gameOverDisplay = document.getElementById('game-over');
         const introDisplay = document.getElementById('intro');
+        const backgroundMusic = document.getElementById('background-music');
+        const gameOverSound = document.getElementById('game-over-sound');
+        const volumeSlider = document.getElementById('volume-slider');
 
         let headY = 300;
         let headVelocity = 0;
@@ -175,6 +199,14 @@
 
         const containerColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD'];
 
+        // Initialize volume for both audio elements
+        backgroundMusic.volume = volumeSlider.value;
+        gameOverSound.volume = volumeSlider.value;
+        volumeSlider.addEventListener('input', () => {
+            backgroundMusic.volume = volumeSlider.value;
+            gameOverSound.volume = volumeSlider.value;
+        });
+
         document.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
                 handleFlap();
@@ -190,6 +222,7 @@
             if (!gameStarted) {
                 gameStarted = true;
                 introDisplay.style.display = 'none';
+                backgroundMusic.play().catch(err => console.log('Background music play failed:', err));
                 gameLoop();
                 spawnContainer();
             }
@@ -270,13 +303,22 @@
                 stack.bottom.style.left = stackX + 'px';
 
                 const headRect = head.getBoundingClientRect();
+                // Reduce hitbox by 30% (70x70px centered within 100x100px)
+                const hitboxOffset = 15; // 30% of 100px / 2
+                const adjustedHeadRect = {
+                    left: headRect.left + hitboxOffset,
+                    right: headRect.right - hitboxOffset,
+                    top: headRect.top + hitboxOffset,
+                    bottom: headRect.bottom - hitboxOffset
+                };
+
                 const topStackRect = stack.top.getBoundingClientRect();
                 const bottomStackRect = stack.bottom.getBoundingClientRect();
 
                 if (
-                    headRect.left < topStackRect.right &&
-                    headRect.right > topStackRect.left &&
-                    (headRect.top < topStackRect.bottom || headRect.bottom > bottomStackRect.top)
+                    adjustedHeadRect.left < topStackRect.right &&
+                    adjustedHeadRect.right > topStackRect.left &&
+                    (adjustedHeadRect.top < topStackRect.bottom || adjustedHeadRect.bottom > bottomStackRect.top)
                 ) {
                     endGame();
                 }
@@ -298,6 +340,8 @@
         function endGame() {
             gameOver = true;
             gameOverDisplay.style.display = 'block';
+            backgroundMusic.pause();
+            gameOverSound.play().catch(err => console.log('Game over sound play failed:', err));
         }
 
         function resetGame() {
@@ -321,6 +365,10 @@
             }
             head.classList.remove('flapping');
             head.classList.add('neutral');
+            backgroundMusic.pause();
+            backgroundMusic.currentTime = 0;
+            gameOverSound.pause();
+            gameOverSound.currentTime = 0;
         }
 
         function gameLoop() {
