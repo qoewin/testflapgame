@@ -1,0 +1,386 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Containers</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #87CEEB;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #game-container {
+            position: relative;
+            width: 400px;
+            height: 600px;
+            background: url('https://github.com/qoewin/testflapgame/blob/main/bkg%20E4CF4E9F-68A2-4DD0-9006-57F6FF2D42D9.jpg?raw=true') no-repeat;
+            background-size: 400px 600px;
+            border: 2px solid #000;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #head {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            left: 100px;
+            top: 300px;
+            transition: background-image 0.1s;
+        }
+        #head.neutral {
+            background: url('https://github.com/qoewin/testflapgame/blob/main/Chris%20neutral%20state.png?raw=true') no-repeat;
+            background-size: contain;
+        }
+        #head.flapping {
+            background: url('https://github.com/qoewin/testflapgame/blob/main/Chris%20flap%20state.png?raw=true') no-repeat;
+            background-size: contain;
+        }
+        .container-stack {
+            position: absolute;
+            width: 50px;
+            display: flex;
+            flex-direction: column;
+        }
+        .container {
+            width: 50px;
+            height: 30px;
+            border: 2px solid #333;
+            box-sizing: border-box;
+        }
+        #score {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            color: #FFF;
+            text-shadow: 2px 2px #000;
+            z-index: 10;
+        }
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 36px;
+            font-family: Arial, sans-serif;
+            color: #000;
+            background: #FFF;
+            padding: 10px 20px;
+            border: 2px solid #000;
+            display: none;
+            z-index: 10;
+        }
+        #intro {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #FFF;
+            border: 2px solid #000;
+            padding: 20px;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            z-index: 10;
+        }
+        #intro h1 {
+            font-size: 48px;
+            margin: 0;
+            color: #000;
+        }
+        #intro p {
+            font-size: 24px;
+            margin: 10px 0;
+            color: #000;
+        }
+        #volume-control {
+            margin-top: 10px;
+        }
+        #volume-control label {
+            font-size: 18px;
+            color: #000;
+        }
+        #volume-control input[type="range"] {
+            width: 100px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="intro">
+            <h1>Flappy CC</h1>
+            <p>Press Spacebar or Touch Screen to begin</p>
+            <div id="volume-control">
+                <label for="volume-slider">Volume:</label>
+                <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5">
+            </div>
+        </div>
+        <div id="head" class="neutral"></div>
+        <div id="score">Score: 0</div>
+        <div id="game-over">Game Over!</div>
+        <audio id="background-music" loop>
+            <source src="https://github.com/qoewin/testflapgame/blob/2ba79b7e39959cd142c757cae2d021cc65091ed9/best-game-console-301284.mp3?raw=true" type="audio/mpeg">
+        </audio>
+        <audio id="game-over-sound">
+            <source src="https://github.com/qoewin/testflapgame/blob/0943f568194296991dd3acff7cc5efdf89e86fab/Elegant%20Game%20Over.wav?raw=true" type="audio/wav">
+        </audio>
+    </div>
+
+    <script>
+        const head = document.getElementById('head');
+        const gameContainer = document.getElementById('game-container');
+        const scoreDisplay = document.getElementById('score');
+        const gameOverDisplay = document.getElementById('game-over');
+        const introDisplay = document.getElementById('intro');
+        const backgroundMusic = document.getElementById('background-music');
+        const gameOverSound = document.getElementById('game-over-sound');
+        const volumeSlider = document.getElementById('volume-slider');
+
+        let headY = 300;
+        let headVelocity = 0;
+        const gravity = 0.5;
+        const jump = -7;
+        let score = 0;
+        let containers = [];
+        let gameOver = false;
+        let gameStarted = false;
+        let spawnTimeout = null;
+        let isFlapping = false;
+
+        const headWidth = 100;
+        const containerSpacing = headWidth * 2.5; // 250px
+        const minGap = headWidth * 2; // 200px minimum opening
+        const containerSpeed = 2;
+
+        const containerColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD'];
+
+        // Initialize volume for both audio elements
+        backgroundMusic.volume = volumeSlider.value;
+        gameOverSound.volume = volumeSlider.value;
+        volumeSlider.addEventListener('input', () => {
+            backgroundMusic.volume = volumeSlider.value;
+            gameOverSound.volume = volumeSlider.value;
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                handleFlap();
+            }
+        });
+
+        gameContainer.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleFlap();
+        });
+
+        function handleFlap() {
+            if (!gameStarted) {
+                gameStarted = true;
+                introDisplay.style.display = 'none';
+                backgroundMusic.play().catch(err => console.log('Background music play failed:', err));
+                gameLoop();
+                spawnContainer();
+            }
+            if (!gameOver) {
+                headVelocity = jump;
+                head.classList.remove('neutral');
+                head.classList.add('flapping');
+                isFlapping = true;
+                setTimeout(() => {
+                    head.classList.remove('flapping');
+                    head.classList.add('neutral');
+                    isFlapping = false;
+                }, 200);
+            } else {
+                resetGame();
+            }
+        }
+
+        function updateHead() {
+            headVelocity += gravity;
+            headY += headVelocity;
+            head.style.top = headY + 'px';
+
+            if (headY > gameContainer.offsetHeight - 100 || headY < 0) {
+                endGame();
+            }
+        }
+
+        function spawnContainer() {
+            if (gameOver || !gameStarted) return;
+
+            const minHeight = 50;
+            const maxHeight = gameContainer.offsetHeight - minGap - minHeight;
+            const topHeight = Math.random() * (maxHeight - minHeight) + minHeight;
+
+            const stack = document.createElement('div');
+            stack.classList.add('container-stack');
+            stack.style.left = '400px';
+
+            const topContainers = Math.floor(topHeight / 30);
+            const bottomContainers = Math.floor((gameContainer.offsetHeight - topHeight - minGap) / 30);
+
+            console.log(`Top height: ${topHeight}, Top containers: ${topContainers}, Bottom containers: ${bottomContainers}`);
+
+            for (let i = 0; i < topContainers; i++) {
+                const container = document.createElement('div');
+                container.classList.add('container');
+                container.style.backgroundColor = containerColors[Math.floor(Math.random() * containerColors.length)];
+                stack.appendChild(container);
+            }
+            stack.style.top = '0';
+
+            const bottomStack = document.createElement('div');
+            bottomStack.classList.add('container-stack');
+            bottomStack.style.left = '400px';
+            bottomStack.style.bottom = '0';
+
+            for (let i = 0; i < bottomContainers; i++) {
+                const container = document.createElement('div');
+                container.classList.add('container');
+                container.style.backgroundColor = containerColors[Math.floor(Math.random() * containerColors.length)];
+                bottomStack.appendChild(container);
+            }
+
+            gameContainer.appendChild(stack);
+            gameContainer.appendChild(bottomStack);
+            containers.push({ top: stack, bottom: bottomStack, scored: false });
+
+            const spawnDelay = (containerSpacing + 50) / containerSpeed * 16.67;
+            spawnTimeout = setTimeout(spawnContainer, spawnDelay);
+        }
+
+        function moveContainers() {
+            containers.forEach(stack => {
+                let stackX = parseFloat(stack.top.style.left);
+                stackX -= containerSpeed;
+                stack.top.style.left = stackX + 'px';
+                stack.bottom.style.left = stackX + 'px';
+
+                const headRect = head.getBoundingClientRect();
+                // Reduce hitbox by 30% (70x70px centered within 100x100px)
+                const hitboxOffset = 15; // 30% of 100px / 2
+                const adjustedHeadRect = {
+                    left: headRect.left + hitboxOffset,
+                    right: headRect.right - hitboxOffset,
+                    top: headRect.top + hitboxOffset,
+                    bottom: headRect.bottom - hitboxOffset
+                };
+
+                // Debug: Log hitbox dimensions
+                console.log(`Adjusted hitbox: left=${adjustedHeadRect.left}, right=${adjustedHeadRect.right}, top=${adjustedHeadRect.top}, bottom=${adjustedHeadRect.bottom}, width=${adjustedHeadRect.right - adjustedHeadRect.left}, height=${adjustedHeadRect.bottom - adjustedHeadRect.top}`);
+
+                const topStackRect = stack.top.getBoundingClientRect();
+                const bottomStackRect = stack.bottom.getBoundingClientRect();
+
+                if (
+                    adjustedHeadRect.left < topStackRect.right &&
+                    adjustedHeadRect.right > topStackRect.left &&
+                    (adjustedHeadRect.top < topStackRect.bottom || adjustedHeadRect.bottom > bottomStackRect.top)
+                ) {
+                    endGame();
+                }
+
+                if (stackX + 50 < 100 && !stack.scored) {
+                    score++;
+                    scoreDisplay.textContent = `Score: ${score}`;
+                    stack.scored = true;
+                }
+
+                if (stackX < -50) {
+                    stack.top.remove();
+                    stack.bottom.remove();
+                    containers = containers.filter(s => s.top !== stack.top);
+                }
+            });
+        }
+
+        function endGame() {
+            gameOver = true;
+            gameOverDisplay.style.display = 'block';
+            backgroundMusic.pause();
+            gameOverSound.play().catch(err => console.log('Game over sound play failed:', err));
+        }
+
+        function resetGame() {
+            headY = 300;
+            headVelocity = 0;
+            head.style.top = headY + 'px';
+            score = 0;
+            scoreDisplay.textContent = `Score: ${score}`;
+            gameOver = false;
+            gameStarted = false;
+            gameOverDisplay.style.display = 'none';
+            introDisplay.style.display = 'block';
+            containers.forEach(stack => {
+                stack.top.remove();
+                stack.bottom.remove();
+            });
+            containers = [];
+            if (spawnTimeout) {
+                clearTimeout(spawnTimeout);
+                spawnTimeout = null;
+            }
+            head.classList.remove('flapping');
+            head.classList.add('neutral');
+            backgroundMusic.pause();
+            backgroundMusic.currentTime = 0;
+            gameOverSound.pause();
+            gameOverSound.currentTime = 0;
+        }
+
+        function gameLoop() {
+            if (gameOver) return;
+
+            updateHead();
+            moveContainers();
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
